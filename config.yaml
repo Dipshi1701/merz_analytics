@@ -1,0 +1,16 @@
+api:
+  auth_url: https://api.inbenta.io/v1/auth
+  base_url: https://api-reporting-us.inbenta.io/prod
+  key: ${MERZ_INBENTA_API_KEY}
+  secret: ${MERZ_INBENTA_API_SECRET}
+  signature_key: ${MERZ_INBENTA_SIGNATURE_KEY}
+  rate_limit: 800
+  token_refresh_buffer: 120
+
+filters:
+  sources: []        # No source filter - API returns all data; source column populated from API response
+  environment: production
+
+output:
+  report_dir: data/reports
+  format: xlsx

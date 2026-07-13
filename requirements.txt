@@ -1,0 +1,24 @@
+# Merz Reporting Dashboard
+# Install: pip install -r requirements.txt
+# Requires: Python 3.11+, MySQL 8+ (database merz_db)
+
+# Web app
+Flask>=3.0.0
+Werkzeug>=3.0.0
+
+# Database
+SQLAlchemy>=2.0.0
+PyMySQL>=1.1.0
+cryptography>=41.0.0
+
+# Config & API
+python-dotenv>=1.0.0
+PyYAML>=6.0
+requests>=2.31.0
+tenacity>=8.2.0
+
+# Excel export
+openpyxl>=3.1.0
+
+# IANA timezones for zoneinfo (America/New_York, UTC) — required on Windows; no-op on Mac/Linux if OS tzdata exists
+tzdata>=2024.1

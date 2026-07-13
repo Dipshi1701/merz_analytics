@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+
+{% block title %}Merz Medibot Analytics{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+{% endblock %}
+
+{% block body %}
+<div class="app-shell" id="appShell" data-today="{{ today }}">
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-top">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='css/images/alphalogo.png') }}" alt="Alphanumeric" class="brand-logo-full">
+            </div>
+            <button type="button" class="sidebar-close-btn" id="sidebarCloseBtn" title="Close sidebar" aria-label="Close sidebar">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+        </div>
+
+        <div class="sidebar-section">
+            <h2 class="sidebar-label">Report Filters</h2>
+            <form id="filterForm" class="filter-form">
+                <div class="form-group">
+                    <label for="startDate"><i class="bi bi-calendar3"></i> Start Date</label>
+                    <div class="date-input-wrap">
+                        <input type="text" id="startDate" name="start_date"
+                               class="date-picker" value="{{ default_start }}"
+                               placeholder="Select start date" readonly required>
+                        <i class="bi bi-calendar-event date-input-icon"></i>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="endDate"><i class="bi bi-calendar3"></i> End Date</label>
+                    <div class="date-input-wrap">
+                        <input type="text" id="endDate" name="end_date"
+                               class="date-picker" value="{{ default_end }}"
+                               placeholder="Select end date" readonly required>
+                        <i class="bi bi-calendar-event date-input-icon"></i>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" id="generateBtn">
+                    <i class="bi bi-lightning-charge"></i>
+                    <span>Generate Report</span>
+                </button>
+            </form>
+        </div>
+
+        <div class="sidebar-footer">
+            <span>Merz Analytics Dashboard &copy; {{ now.year }} &middot; Powered by Alphanumeric</span>
+        </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content" id="mainContent">
+        <header class="page-header">
+            <div class="page-header-left">
+                <button type="button" class="sidebar-open-btn" id="sidebarOpenBtn" title="Open filters" aria-label="Open filters">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+                <div>
+                    <h2>Medibot Analytics Dashboard</h2>
+                    <p class="subtitle">Reporting data from the Merz Reporting API</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="header-meta" id="periodBadge">
+                    <i class="bi bi-calendar-range"></i>
+                    <span id="periodLabel"></span>
+                </div>
+                <button type="button" class="export-header-btn" id="exportBtn" disabled title="Export Excel">
+                    <i class="bi bi-file-earmark-excel"></i>
+                    <span>Export Excel</span>
+                </button>
+                <a href="{{ url_for('dashboard.logout') }}" class="logout-btn" title="Sign out">
+                    <i class="bi bi-box-arrow-right"></i>
+                    <span>Sign out</span>
+                </a>
+            </div>
+        </header>
+
+        <!-- Toast notifications -->
+        <div id="toastContainer" class="toast-container"></div>
+
+        <!-- Loading overlay -->
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="loading-card">
+                <div class="spinner"></div>
+                <p id="loadingText">Syncing data from API…</p>
+            </div>
+        </div>
+
+        <!-- Empty state -->
+        <section id="emptyState" class="empty-state is-visible">
+            <div class="empty-icon"><i class="bi bi-bar-chart-line"></i></div>
+            <h3>Ready to explore your data</h3>
+            <p>Select a date range in the sidebar and click <strong>Generate Report</strong> to load analytics.</p>
+            <button type="button" class="btn-empty-action" id="emptyOpenSidebar">
+                <i class="bi bi-sliders"></i> Open Filters
+            </button>
+        </section>
+
+        <!-- Dashboard (hidden until loaded) -->
+        <div id="dashboardContent" class="dashboard-content">
+            <section class="metric-groups">
+                <div class="metric-group">
+                    <h3 class="metric-group-title">Conversations</h3>
+                    <div class="metrics-grid metrics-grid--4">
+                        <div class="metric-card metric-teal">
+                            <div class="metric-icon"><i class="bi bi-chat-dots"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mTotalSessions">—</span>
+                                <span class="metric-label">Total Sessions</span>
+                                <span class="metric-desc">Unique chatbot conversations in the selected date range.</span>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-violet">
+                            <div class="metric-icon"><i class="bi bi-graph-up"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mAvgPerSession">—</span>
+                                <span class="metric-label">Average Questions</span>
+                                <span class="metric-desc">Average number of user questions per conversation.</span>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-cyan">
+                            <div class="metric-icon"><i class="bi bi-person-badge"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mHcpSessions">—</span>
+                                <span class="metric-label">HCP Sessions</span>
+                                <span class="metric-desc">Sessions where the user was identified as a healthcare professional.</span>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-lime">
+                            <div class="metric-icon"><i class="bi bi-person"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mConsumerSessions">—</span>
+                                <span class="metric-label">Patient Sessions</span>
+                                <span class="metric-desc">Sessions where the user was identified as a patient or consumer.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-group">
+                    <h3 class="metric-group-title">Questions</h3>
+                    <div class="metrics-grid metrics-grid--3">
+                        <div class="metric-card metric-indigo">
+                            <div class="metric-icon"><i class="bi bi-question-circle"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mTotalQuestions">—</span>
+                                <span class="metric-label">Total Questions</span>
+                                <span class="metric-desc">Total user questions submitted in the selected period.</span>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-amber">
+                            <div class="metric-icon"><i class="bi bi-calendar-day"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mAvgPerDay">—</span>
+                                <span class="metric-label">Questions per Day</span>
+                                <span class="metric-desc">Average questions per calendar day in the range.</span>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-emerald">
+                            <div class="metric-icon"><i class="bi bi-trophy"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mPeakDay">—</span>
+                                <span class="metric-label">Peak Day <small id="mPeakDayDate"></small></span>
+                                <span class="metric-desc">Day with the highest question volume in the range.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-group">
+                    <h3 class="metric-group-title">Content</h3>
+                    <div class="metrics-grid metrics-grid--3">
+                        <div class="metric-card metric-rose">
+                            <div class="metric-icon"><i class="bi bi-cursor"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mClickRate">—</span>
+                                <span class="metric-label">Content Click Rate</span>
+                                <span class="metric-desc">Percentage of displayed content that users clicked.</span>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-sky">
+                            <div class="metric-icon"><i class="bi bi-hand-index-thumb"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mTotalClicks">—</span>
+                                <span class="metric-label">Total Content Clicks</span>
+                                <span class="metric-desc">Total clicks on recommended content across all questions.</span>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-slate">
+                            <div class="metric-icon"><i class="bi bi-slash-circle"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mZeroClickRate">—</span>
+                                <span class="metric-label">Zero-Click Sessions <small id="mZeroClickCount"></small></span>
+                                <span class="metric-desc">Share of sessions where no recommended content was clicked.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-group">
+                    <h3 class="metric-group-title">Compliance</h3>
+                    <div class="metrics-grid metrics-grid--1">
+                        <div class="metric-card metric-red">
+                            <div class="metric-icon"><i class="bi bi-flag"></i></div>
+                            <div class="metric-body">
+                                <span class="metric-value" id="mAdverse">—</span>
+                                <span class="metric-label">Flagged Transcripts</span>
+                                <span class="metric-desc">Transcripts flagged based on keyword detection.</span>
+                                <div class="adverse-breakdown is-hidden" id="mAdverseBreakdown">
+                                    <span class="severity-chip severity-high">High <strong id="mAdverseHigh">0</strong></span>
+                                    <span class="severity-chip severity-medium">Med <strong id="mAdverseMedium">0</strong></span>
+                                    <span class="severity-chip severity-low">Low <strong id="mAdverseLow">0</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts -->
+            <section class="charts-row">
+                <div class="panel" id="volumePanel">
+                    <div class="panel-header">
+                        <h3><i class="bi bi-activity"></i> Daily Question Volume</h3>
+                    </div>
+                    <div class="panel-body chart-body" id="volumeChartBody">
+                        <canvas id="volumeChart"></canvas>
+                        <p class="chart-empty is-hidden" id="volumeEmpty">No question data for this period.</p>
+                    </div>
+                </div>
+                <div class="panel" id="adversePanel">
+                    <div class="panel-header">
+                        <h3><i class="bi bi-shield-exclamation"></i> Daily Flagged Transcripts</h3>
+                    </div>
+                    <div class="panel-body chart-body" id="adverseChartBody">
+                        <canvas id="adverseChart"></canvas>
+                        <p class="chart-empty is-hidden" id="adverseEmpty">No flagged transcripts for this period.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Top insights tables -->
+            <section class="charts-row">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h3><i class="bi bi-stars"></i> Most Asked Questions</h3>
+                    </div>
+                    <div class="panel-body table-panel">
+                        <table class="data-table data-table--ranked" id="topQuestionsTable">
+                            <thead>
+                                <tr><th>#</th><th>Question</th><th>Times Asked</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <p class="table-empty is-hidden" id="topQuestionsEmpty">No questions found.</p>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <h3><i class="bi bi-link-45deg"></i> Most Clicked Content</h3>
+                    </div>
+                    <div class="panel-body table-panel">
+                        <table class="data-table data-table--ranked" id="topContentTable">
+                            <thead>
+                                <tr><th>#</th><th>Content Title</th><th>Clicks</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <p class="table-empty is-hidden" id="topContentEmpty">No content clicks recorded yet.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Content Volume -->
+            <section class="panel">
+                <div class="panel-header">
+                    <h3><i class="bi bi-file-bar-graph"></i> Content Performance</h3>
+                </div>
+                <div class="panel-body table-panel">
+                    <table class="data-table data-table--ranked" id="contentVolumeTable">
+                        <thead>
+                            <tr><th>#</th><th>Content Title</th><th>Times Shown</th><th>Times Clicked</th><th>CTR <i class="bi bi-info-circle ctr-tooltip" title="Click-Through Rate: percentage of times content was clicked after being shown to the user"></i></th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <p class="table-empty is-hidden" id="contentVolumeEmpty">No content recommendations found for this period.</p>
+                </div>
+            </section>
+
+            <!-- Product Interactions -->
+            <section class="panel">
+                <div class="panel-header">
+                    <h3><i class="bi bi-box-seam"></i> Interactions per Option of Welcome Message</h3>
+                </div>
+                <div class="panel-body chart-body" id="productChartBody" style="height:280px;">
+                    <canvas id="productChart"></canvas>
+                    <p class="chart-empty is-hidden" id="productEmpty">No product interaction data for this period.</p>
+                </div>
+            </section>
+
+            <!-- Survey Results -->
+            <section class="panel" id="surveyPanel">
+                <div class="panel-header">
+                    <h3><i class="bi bi-clipboard-data"></i> Survey Results</h3>
+                </div>
+                <div class="panel-body" id="surveyBody">
+                    <p class="table-empty" id="surveyEmpty">No survey responses for this period.</p>
+                    <div class="survey-summary is-hidden" id="surveySummary">
+                        <div class="survey-metrics">
+                            <div class="survey-metric">
+                                <span class="survey-metric-value" id="sSurveyTotal">—</span>
+                                <span class="survey-metric-label">Surveys Collected</span>
+                            </div>
+                            <div class="survey-metric">
+                                <span class="survey-metric-value" id="sSolvedPct">—</span>
+                                <span class="survey-metric-label">Problem Solved</span>
+                            </div>
+                            <div class="survey-metric">
+                                <span class="survey-metric-value" id="sAvgRating">—</span>
+                                <span class="survey-metric-label">Avg Rating (1–5)</span>
+                            </div>
+                        </div>
+                        <div class="survey-chart-wrap" style="height:160px; margin-top:1rem;">
+                            <canvas id="ratingChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sessions -->
+            <section class="panel sessions-panel">
+                <div class="panel-header panel-header-flex">
+                    <h3><i class="bi bi-collection"></i> User Questions by Session</h3>
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <input type="search" id="sessionSearch" placeholder="Search questions…" disabled>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <p class="session-count" id="sessionCount"></p>
+                    <div id="sessionsList" class="sessions-list"></div>
+                    <p class="table-empty is-hidden" id="sessionsEmpty">No questions found for this date range.</p>
+                </div>
+            </section>
+
+            <!-- Adverse events -->
+            <section class="panel adverse-panel">
+                <div class="panel-header">
+                    <h3><i class="bi bi-flag"></i> Flagged Transcripts</h3>
+                </div>
+                <div class="panel-body table-panel">
+                    <table class="data-table" id="adverseTable">
+                        <thead>
+                            <tr><th>Date</th><th>Question</th><th>Reason</th><th>Source</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <p class="table-empty is-hidden" id="adverseEmpty">No flagged transcripts for this date range.</p>
+                    <p class="table-caption" id="adverseCaption"></p>
+                </div>
+            </section>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

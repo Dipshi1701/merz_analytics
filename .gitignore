@@ -1,0 +1,62 @@
+# Secrets — never commit credentials
+# Sensitive local environment/config files to keep out of commits:
+# .env, .env.local, .env.* , *.env, env/, ENV/
+.env
+.env.local
+.env.*
+.env.*.local
+*.env
+*.env.*
+*.sample
+*.example
+*.template
+!.env.example
+env/
+ENV/
+
+# Local generated data (app uses MySQL; only reports are written here)
+data/reports/
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db

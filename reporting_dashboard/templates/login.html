@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Merz Analytics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f0f0f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .login-wrap {
+            width: 100%;
+            max-width: 380px;
+            padding: 1.5rem;
+        }
+
+        .login-brand {
+            margin-bottom: 1.75rem;
+            text-align: center;
+        }
+
+        .login-brand img {
+            height: 42px;
+            width: auto;
+            object-fit: contain;
+            display: inline-block;
+        }
+
+        .login-card {
+            background: #ffffff;
+            border-radius: 16px;
+            border: 1px solid #e2e2e2;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.07);
+            overflow: hidden;
+        }
+
+        /* Thin black accent bar at top */
+        .login-card::before {
+            content: "";
+            display: block;
+            height: 4px;
+            background: #000000;
+        }
+
+        .login-body {
+            padding: 2rem 2rem 1.5rem;
+        }
+
+        .login-title {
+            margin: 0 0 0.2rem;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #111111;
+            letter-spacing: -0.03em;
+        }
+
+        .login-subtitle {
+            margin: 0 0 1.75rem;
+            font-size: 0.82rem;
+            color: #888888;
+        }
+
+        .form-group {
+            margin-bottom: 1.1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #444444;
+            margin-bottom: 0.35rem;
+            letter-spacing: 0.01em;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.7rem 0.9rem;
+            border: 1.5px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            color: #111111;
+            background: #fafafa;
+            outline: none;
+            transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+            -webkit-appearance: none;
+        }
+
+        .form-group input:focus {
+            border-color: #000000;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
+        }
+
+        .form-group input::placeholder { color: #bbbbbb; }
+
+        .error-msg {
+            background: #fff5f5;
+            border: 1.5px solid #fca5a5;
+            color: #b91c1c;
+            border-radius: 8px;
+            padding: 0.6rem 0.85rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+
+        .btn-login {
+            width: 100%;
+            margin-top: 0.5rem;
+            padding: 0.78rem;
+            background: #000000;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            letter-spacing: 0.01em;
+            transition: background 0.18s, transform 0.15s;
+        }
+
+        .btn-login:hover  { background: #222222; transform: translateY(-1px); }
+        .btn-login:active { background: #000000; transform: translateY(0); }
+
+        .login-footer {
+            text-align: center;
+            padding: 0.9rem 2rem 1.25rem;
+            border-top: 1px solid #f0f0f0;
+            font-size: 0.72rem;
+            color: #aaaaaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrap">
+
+        <div class="login-card">
+            <div class="login-body">
+                <!-- Logo inside card on white background -->
+                <div class="login-brand">
+                    <img src="{{ url_for('static', filename='css/images/alphalogo.png') }}" alt="Alphanumeric">
+                </div>
+
+                <h1 class="login-title">Welcome back</h1>
+                <p class="login-subtitle">Sign in to Merz Analytics Dashboard</p>
+
+                {% if error %}
+                <div class="error-msg">
+                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {{ error }}
+                </div>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('dashboard.login') }}">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username"
+                               value="{{ username or '' }}"
+                               placeholder="e.g. merz"
+                               autocomplete="username" required autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password"
+                               placeholder="Enter your password"
+                               autocomplete="current-password" required>
+                    </div>
+                    <button type="submit" class="btn-login">Sign In</button>
+                </form>
+            </div>
+
+            <div class="login-footer">
+                Merz Analytics Dashboard &copy; {{ year }} &middot; Powered by Alphanumeric
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>
