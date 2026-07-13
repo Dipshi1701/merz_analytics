@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from functools import wraps
 from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Blueprint, Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from reporting_dashboard.config import REPORT_DIR
@@ -16,6 +17,9 @@ from reporting_dashboard.sync import sync
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("dashboard", __name__)
+
+APP_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(APP_ROOT / ".env", override=True)
 
 
 # ---------------------------------------------------------------------------
@@ -80,10 +84,13 @@ def login():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-        valid_user = os.getenv("DASHBOARD_USERNAME", "merz")
-        valid_pass = os.getenv("DASHBOARD_PASSWORD", "Merz@2024")
+        valid_user = (os.getenv("DASHBOARD_USERNAME") or "").strip()
+        valid_pass = os.getenv("DASHBOARD_PASSWORD") or ""
 
-        if username == valid_user and password == valid_pass:
+        if not valid_user or not valid_pass:
+            logger.warning("Dashboard credentials are not configured in the environment.")
+            error = "Dashboard login is not configured."
+        elif username == valid_user and password == valid_pass:
             session["logged_in"] = True
             session.permanent = True          # honour PERMANENT_SESSION_LIFETIME
             return redirect(url_for("dashboard.index"))
