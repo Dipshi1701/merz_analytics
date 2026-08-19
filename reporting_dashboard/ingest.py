@@ -146,11 +146,59 @@ def extract_session_details(details: List[Dict]) -> List[Dict]:
 # Raw DB writes
 # ---------------------------------------------------------------------------
 
-def clear_week(week_key: str) -> None:
+def _row_in_est_range(raw_date: str, date_from: datetime, date_to: datetime) -> bool:
+    if not raw_date:
+        return False
+    range_start = datetime(date_from.year, date_from.month, date_from.day, tzinfo=_EST)
+    exclusive_end = date_to + timedelta(days=1)
+    range_end = datetime(exclusive_end.year, exclusive_end.month, exclusive_end.day, tzinfo=_EST)
+    try:
+        s = raw_date.strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_UTC)
+        return range_start <= dt.astimezone(_EST) < range_end
+    except (ValueError, AttributeError):
+        return False
+
+
+def clear_week(week_key: str, date_from: datetime = None, date_to: datetime = None) -> None:
+    """Clear raw data for a week_key.
+
+    Multiple distinct dates can share the same ISO week_key. If date_from/
+    date_to are given, only rows whose EST date falls inside that range are
+    removed, so re-syncing a narrow range (e.g. a single day) does not wipe
+    out other days of the same ISO week that were already ingested. If
+    omitted, the entire week_key bucket is cleared (legacy behaviour).
+    """
     db = get_session()
     try:
-        for model in _WEEK_TABLES:
-            db.query(model).filter(model.week_key == week_key).delete()
+        if date_from is None or date_to is None:
+            for model in _WEEK_TABLES:
+                db.query(model).filter(model.week_key == week_key).delete()
+            db.commit()
+            return
+
+        # RawUqMatching has no date of its own; it's tied to RawUserQuestion
+        # via event_id, so figure out which event_ids are being removed.
+        uq_rows = db.query(RawUserQuestion.event_id, RawUserQuestion.date).filter(
+            RawUserQuestion.week_key == week_key
+        ).all()
+        stale_event_ids = [r.event_id for r in uq_rows if _row_in_est_range(r.date, date_from, date_to)]
+
+        dated_models = [RawSession, RawClick, RawRating, RawUserQuestion, AggSessionDetail, SurveyAnswer]
+        for model in dated_models:
+            rows = db.query(model.id, model.date).filter(model.week_key == week_key).all()
+            stale_ids = [r.id for r in rows if _row_in_est_range(r.date, date_from, date_to)]
+            if stale_ids:
+                db.query(model).filter(model.id.in_(stale_ids)).delete(synchronize_session=False)
+
+        if stale_event_ids:
+            db.query(RawUqMatching).filter(
+                RawUqMatching.week_key == week_key,
+                RawUqMatching.event_id.in_(stale_event_ids),
+            ).delete(synchronize_session=False)
+
         db.commit()
     finally:
         db.close()
@@ -374,7 +422,7 @@ def ingest_from_api(start_date: date, end_date: date) -> Dict[str, Any]:
     client = get_reporting_client()
     allowed_sources = config.get_filters_config().get("sources", []) or None
 
-    clear_week(week_key)
+    clear_week(week_key, start_dt, end_dt)
     run_start = datetime.utcnow()
     counts: Dict[str, int] = {}
 
@@ -385,13 +433,28 @@ def ingest_from_api(start_date: date, end_date: date) -> Dict[str, Any]:
         counts["raw_uq_matchings"] = insert_matchings(matchings, week_key)
 
         details_raw = filter_by_est_range(client.get_session_details(start_dt, end_dt, sources=allowed_sources), start_dt, end_dt)
-        counts["agg_session_details"] = upsert_session_details(extract_session_details(details_raw), week_key)
+        details = extract_session_details(details_raw)
+        counts["agg_session_details"] = upsert_session_details(details, week_key)
 
         sessions_raw = filter_by_est_range(client.get_sessions(start_dt, end_dt, sources=allowed_sources), start_dt, end_dt)
         valid_log_ids = {q["event_id"] for q in questions}
+        # Keep VARIABLES/SEARCH for sessions that contain our questions (needed for product_context).
+        question_session_ids = set()
+        for d in details:
+            sid = d.get("session_id") or ""
+            raw_log_ids = d.get("log_ids")
+            try:
+                log_ids = json.loads(raw_log_ids) if isinstance(raw_log_ids, str) else (raw_log_ids or [])
+            except (json.JSONDecodeError, TypeError):
+                log_ids = []
+            if sid and any(lid in valid_log_ids for lid in log_ids):
+                question_session_ids.add(sid)
+        product_keys = {"VARIABLES", "SEARCH", "ACTION_DATA_FIELD"}
         filtered_sessions = [
             s for s in sessions_raw
-            if (s.get("log_id") and s.get("log_id") in valid_log_ids) or s.get("key") == "SURVEY_ANSWER"
+            if (s.get("log_id") and s.get("log_id") in valid_log_ids)
+            or s.get("key") == "SURVEY_ANSWER"
+            or (s.get("session_id") in question_session_ids and s.get("key") in product_keys)
         ]
         counts["raw_sessions"] = insert_raw_sessions(extract_sessions(filtered_sessions), week_key)
 

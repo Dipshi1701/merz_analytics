@@ -150,6 +150,7 @@ class UserQuestion(Base):
     adverse_reason = Column(String(255), default="")
     user_type = Column(String(20), default="", index=True)
     recommendations_json = Column(Text, default="")
+    product_context = Column(String(50), default="", index=True)
     synced_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -182,3 +183,14 @@ def _ensure_columns():
                 conn.execute(text(
                     "ALTER TABLE user_questions ADD COLUMN user_type VARCHAR(20) DEFAULT ''"
                 ))
+        if "product_context" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE user_questions ADD COLUMN product_context VARCHAR(50) DEFAULT ''"
+                ))
+                try:
+                    conn.execute(text(
+                        "CREATE INDEX ix_user_questions_product_context ON user_questions (product_context)"
+                    ))
+                except Exception:
+                    pass

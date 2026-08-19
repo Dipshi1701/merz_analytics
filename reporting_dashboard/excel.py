@@ -3,7 +3,7 @@
 import json
 import logging
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -165,20 +165,42 @@ class SessionBuilder:
             date_str, time_str = self._parse_dt(session["date"])
             user_type = self._get_user_type(sid, week_key)
             rows.append({"row_label": sid, "count": len(questions_in_session), "label_type": "Session",
-                         "source": session["source"], "user_type": user_type, "date": date_str,
-                         "time": time_str, "escalated": session.get("escalated", "")})
+                         "user_type": user_type, "date": date_str,
+                         "time": time_str, "escalated": session.get("escalated", ""), "product": ""})
             for question_text, count, event_ids in self._group_duplicates(questions_in_session):
-                rows.append({"row_label": question_text, "count": count, "label_type": "Question", "source": ""})
+                product = self._get_product_context(event_ids)
+                rows.append({"row_label": question_text, "count": count, "label_type": "Question",
+                             "product": product})
                 rows.append({"row_label": self._format_matchings(event_ids, week_key), "count": count,
-                             "label_type": "Answer", "source": ""})
+                             "label_type": "Answer", "product": ""})
                 rows.append({"row_label": self._get_rating(event_ids, week_key), "count": count,
-                             "label_type": "Rating", "source": ""})
+                             "label_type": "Rating", "product": ""})
         return rows
 
     def _get_user_questions(self, week_key: str) -> List[Dict]:
         cursor = self.conn.cursor()
-        cursor.execute("SELECT event_id, user_question, date FROM raw_user_questions WHERE week_key = %s ORDER BY date ASC", (week_key,))
-        return [{"event_id": r[0], "user_question": r[1], "date": r[2]} for r in cursor.fetchall()]
+        cursor.execute(
+            "SELECT r.event_id, r.user_question, r.date, COALESCE(u.product_context, '') "
+            "FROM raw_user_questions r "
+            "LEFT JOIN user_questions u ON u.event_id = r.event_id "
+            "WHERE r.week_key = %s ORDER BY r.date ASC",
+            (week_key,),
+        )
+        return [{"event_id": r[0], "user_question": r[1], "date": r[2], "product_context": r[3] or ""}
+                for r in cursor.fetchall()]
+
+    def _get_product_context(self, event_ids: List[str]) -> str:
+        if not event_ids:
+            return ""
+        cursor = self.conn.cursor()
+        ph = ",".join(["%s"] * len(event_ids))
+        cursor.execute(
+            f"SELECT product_context FROM user_questions "
+            f"WHERE event_id IN ({ph}) AND product_context IS NOT NULL AND product_context != '' LIMIT 1",
+            tuple(event_ids),
+        )
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else ""
 
     def _get_sessions(self, week_key: str) -> List[Dict]:
         cursor = self.conn.cursor()
@@ -300,12 +322,15 @@ class SessionBuilder:
 # ---------------------------------------------------------------------------
 
 class MerzExcelWriter:
-    COLUMNS = ["Row Labels", "Count of User question", "Labels", "Source", "Date", "Time"]
+    COLUMNS = ["Row Labels", "Count of User question", "Labels", "Product", "Date", "Time"]
     COLUMN_DATA_KEYS = {
         "Row Labels": "row_label", "Count of User question": "count", "Labels": "label_type",
-        "Source": "source", "Date": "date", "Time": "time",
+        "Product": "product", "Date": "date", "Time": "time",
     }
-    COLUMN_WIDTHS = {"Row Labels": 100, "Count of User question": 15, "Labels": 15, "Source": 20, "Date": 12, "Time": 10}
+    COLUMN_WIDTHS = {
+        "Row Labels": 100, "Count of User question": 15, "Labels": 15,
+        "Product": 14, "Date": 12, "Time": 10,
+    }
     SESSION_FILL = PatternFill(start_color="D3E3F3", end_color="D3E3F3", fill_type="solid")
 
     def __init__(self, output_dir: str):
@@ -346,18 +371,29 @@ class MerzExcelWriter:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _week_keys_for_range(start_date: date, end_date: date) -> List[str]:
+    keys = set()
+    current = start_date
+    while current <= end_date:
+        keys.add(get_week_key(datetime.combine(current, datetime.min.time())))
+        current += timedelta(days=1)
+    return sorted(keys)
+
+
 def generate_excel(start_date: date, end_date: date) -> str:
-    from reporting_dashboard.ingest import ingest_from_api
+    """Always sync from API then build Excel."""
+    from reporting_dashboard.sync import sync
     from reporting_dashboard.api import create_editor_client
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    ingest_from_api(start_date, end_date)
-    week_key = get_week_key(datetime.combine(start_date, datetime.min.time()))
+    sync(start_date, end_date)
 
     editor_client = create_editor_client()
+    report_rows: List[Dict[str, Any]] = []
     with MySQLConnection() as conn:
         builder = SessionBuilder(conn, editor_client=editor_client)
-        report_rows = builder.build_report_rows(week_key)
+        for week_key in _week_keys_for_range(start_date, end_date):
+            report_rows.extend(builder.build_report_rows(week_key))
 
     writer = MerzExcelWriter(str(REPORT_DIR))
     start_dt = datetime.combine(start_date, datetime.min.time())

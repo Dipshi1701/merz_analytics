@@ -12,14 +12,6 @@ from reporting_dashboard.db import AggSessionDetail, UserQuestion, SurveyAnswer,
 
 logger = logging.getLogger(__name__)
 
-PRODUCT_CONTENT_IDS = {
-    30: "Belotero",
-    31: "DeScribe",
-    32: "Radiesse",
-    33: "Ultherapy",
-    34: "Xeomin",
-}
-
 
 # ---------------------------------------------------------------------------
 # Queries
@@ -48,6 +40,7 @@ def get_questions(start: date, end: date, search: str = "") -> List[Dict]:
                 "session_id": r.session_id or "",
                 "adverse_event": r.adverse_event,
                 "adverse_reason": r.adverse_reason or "",
+                "product_context": r.product_context or "",
                 "recommendations": recommendations,
             })
         return results
@@ -177,6 +170,7 @@ def get_questions_by_session(start: date, end: date, search: str = "") -> List[D
         sessions[sid]["questions"].append({
             "date": q.get("date", ""),
             "question": q.get("question", ""),
+            "product_context": q.get("product_context", ""),
             "recommendations": [
                 {"title": r.get("title", ""), "clicked": bool(r.get("clicked")), "external": bool(r.get("external"))}
                 for r in q.get("recommendations", []) if r.get("title")
@@ -234,30 +228,22 @@ def get_survey_by_session(start: date, end: date) -> Dict[str, Any]:
 
 
 def get_product_interactions(start: date, end: date) -> List[Dict]:
-    """Count unique sessions per product based on recommendation titles in user_questions."""
+    """Count unique sessions per product from user_questions.product_context."""
     db = get_session()
     try:
-        rows = (db.query(UserQuestion)
-                .filter(UserQuestion.question_date >= start, UserQuestion.question_date <= end)
+        rows = (db.query(UserQuestion.product_context, UserQuestion.session_id)
+                .filter(
+                    UserQuestion.question_date >= start,
+                    UserQuestion.question_date <= end,
+                    UserQuestion.product_context != "",
+                    UserQuestion.session_id != "",
+                )
                 .all())
-        # product name -> set of session_ids
         product_sessions: Dict[str, set] = {}
-        product_names = list(PRODUCT_CONTENT_IDS.values())
-        for row in rows:
-            if not row.recommendations_json or not row.session_id:
+        for product, session_id in rows:
+            if not product or not session_id:
                 continue
-            try:
-                recs = json.loads(row.recommendations_json)
-            except (json.JSONDecodeError, TypeError):
-                continue
-            products_in_question = set()
-            for rec in recs:
-                title = rec.get("title", "") if isinstance(rec, dict) else str(rec)
-                for product in product_names:
-                    if title.lower().startswith(product.lower()):
-                        products_in_question.add(product)
-            for product in products_in_question:
-                product_sessions.setdefault(product, set()).add(row.session_id)
+            product_sessions.setdefault(product, set()).add(session_id)
         return [
             {"product": p, "sessions": len(sids)}
             for p, sids in sorted(product_sessions.items(), key=lambda x: -len(x[1]))

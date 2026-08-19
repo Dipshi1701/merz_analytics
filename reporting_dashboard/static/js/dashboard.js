@@ -117,11 +117,12 @@ function setupSidebar() {
 // --- Date pickers ---
 
 function setupDatePickers() {
-    // Restrict calendar to last 1 month only
     const todayDate = new Date(today);
-    const oneMonthAgo = new Date(todayDate);
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-    const minAllowed = oneMonthAgo.toISOString().slice(0, 10);
+    const minAllowed = new Date(
+        todayDate.getFullYear(),
+        todayDate.getMonth() - 1,
+        1
+    ).toISOString().slice(0, 10);
 
     const opts = {
         dateFormat: "Y-m-d",
@@ -466,9 +467,14 @@ function fillSessions(sessions, surveyBySession) {
                 clicksHtml += "</ul>";
             }
 
+            const productHtml = q.product_context
+                ? '<div class="question-product"><span class="product-label">Product</span> <span class="product-badge">' + escapeHtml(q.product_context) + "</span></div>"
+                : '<div class="question-product question-product--empty"><span class="product-label">Product</span> —</div>';
+
             questionsHtml +=
                 '<div class="question-block">' +
                 '<div class="question-text"><span class="question-date">' + escapeHtml(q.date) + "</span> — " + escapeHtml(q.question) + "</div>" +
+                productHtml +
                 clicksHtml +
                 "</div>";
         });

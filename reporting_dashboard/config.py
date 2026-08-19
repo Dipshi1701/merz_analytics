@@ -28,6 +28,9 @@ DATABASE_URL = os.getenv(
 # --- Sync behaviour ---
 REFRESH_DAYS = int(os.getenv("MERZ_REFRESH_DAYS", "7"))
 
+# Inbenta Reporting API environment filter: development | preproduction | production
+INBENTA_ENV = (os.getenv("MERZ_INBENTA_ENV") or "production").strip().lower()
+
 # --- Report output ---
 REPORT_DIR = APP_ROOT / "data" / "reports"
 

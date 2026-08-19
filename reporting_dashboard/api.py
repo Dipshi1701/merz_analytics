@@ -168,15 +168,65 @@ class InbentaReportingClient:
         return response.json()
 
     def _fetch_daily(self, endpoint: str, date_from: datetime, date_to: datetime, sources=None) -> List[Dict]:
+        """Fetch endpoint for a date range in one request (fast path).
+
+        The API caps each response at a fixed page size (observed: 1000
+        results) and does not support offset-based pagination for this
+        client (an explicit `offset` param is rejected with 403). So if the
+        range's total_count exceeds what was actually returned, the single
+        request silently truncated the result set -- in that case (and on
+        any request failure) we fall back to day-by-day fetching, since a
+        single day's volume is reliably under the page size.
+        Always includes env= from MERZ_INBENTA_ENV (development|preproduction|production).
+        """
+        from reporting_dashboard.config import INBENTA_ENV
+
+        params = {
+            "date_from": date_from.strftime("%Y-%m-%d"),
+            "date_to": date_to.strftime("%Y-%m-%d"),
+            "env": INBENTA_ENV,
+        }
+        if sources:
+            params["source"] = json.dumps(sources)
+        try:
+            logger.info(
+                "Fetching %s for %s → %s (env=%s, single request)",
+                endpoint, params["date_from"], params["date_to"], INBENTA_ENV,
+            )
+            response = self._make_request("GET", endpoint, params=params)
+            results = response.get("results", [])
+            total_count = response.get("total_count")
+            if total_count is None or len(results) >= total_count:
+                return results
+            logger.warning(
+                "Range fetch for %s truncated (%s of %s results); falling back to day-by-day",
+                endpoint, len(results), total_count,
+            )
+        except Exception as exc:
+            logger.warning("Range fetch failed for %s (%s); falling back to day-by-day", endpoint, exc)
+
         from reporting_dashboard.config import split_into_single_days
         days = split_into_single_days(date_from, date_to)
         all_records = []
         for i, (day_start, day_end) in enumerate(days, 1):
-            logger.info(f"  [{i}/{len(days)}] {day_start.date()}")
-            params = {"date_from": day_start.strftime("%Y-%m-%d"), "date_to": day_end.strftime("%Y-%m-%d")}
+            logger.info(f"  [{i}/{len(days)}] {day_start.date()} env={INBENTA_ENV}")
+            day_params = {
+                "date_from": day_start.strftime("%Y-%m-%d"),
+                "date_to": day_end.strftime("%Y-%m-%d"),
+                "env": INBENTA_ENV,
+            }
             if sources:
-                params["source"] = json.dumps(sources)
-            all_records.extend(self._make_request("GET", endpoint, params=params).get("results", []))
+                day_params["source"] = json.dumps(sources)
+            day_response = self._make_request("GET", endpoint, params=day_params)
+            day_results = day_response.get("results", [])
+            day_total = day_response.get("total_count")
+            if day_total is not None and len(day_results) < day_total:
+                logger.error(
+                    "Day fetch for %s on %s STILL truncated (%s of %s results) -- "
+                    "single-day volume exceeds page size, data will be incomplete",
+                    endpoint, day_start.date(), len(day_results), day_total,
+                )
+            all_records.extend(day_results)
         return all_records
 
     def get_user_questions(self, date_from, date_to, sources=None):
@@ -195,7 +245,12 @@ class InbentaReportingClient:
         return self._fetch_daily("/v1/events/ratings", date_from, date_to, sources)
 
     def get_survey_answer(self, answer_id: str) -> Dict[str, Any]:
-        return self._make_request("GET", f"/v1/events/surveys_answer/{answer_id}").get("results", {})
+        from reporting_dashboard.config import INBENTA_ENV
+        return self._make_request(
+            "GET",
+            f"/v1/events/surveys_answer/{answer_id}",
+            params={"env": INBENTA_ENV},
+        ).get("results", {})
 
 
 # ---------------------------------------------------------------------------

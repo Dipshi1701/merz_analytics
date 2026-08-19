@@ -9,7 +9,8 @@ api:
 
 filters:
   sources: []        # No source filter - API returns all data; source column populated from API response
-  environment: production
+  # environment is controlled by MERZ_INBENTA_ENV in .env (development|preproduction|production)
+  environment: ${MERZ_INBENTA_ENV}
 
 output:
   report_dir: data/reports
